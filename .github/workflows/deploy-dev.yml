@@ -49,91 +49,63 @@ env:
 
 jobs:
   build-and-push:
-    name: Build & Push Images
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'workflow_dispatch') ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-      (github.event_name == 'push')
-      
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
 
     outputs:
       frontend_image: ${{ steps.build-frontend.outputs.image }}
       backend_image:  ${{ steps.build-backend.outputs.image }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: deploy-dev-build-session
 
-      - name: Login to Amazon ECR
-        id: login-ecr
+      - id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build & push frontend image
+      - name: Build & push frontend
         id: build-frontend
         working-directory: apps/frontend
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          REPO: ecommerce-frontend
         run: |
-          IMAGE="$ECR_REGISTRY/$REPO:${{ env.IMAGE_TAG }}"
-          LATEST="$ECR_REGISTRY/$REPO:latest"
-
-          docker build -t "$IMAGE" -t "$LATEST" .
+          IMAGE="${{ steps.login-ecr.outputs.registry }}/ecommerce-frontend:${{ env.IMAGE_TAG }}"
+          docker build -t "$IMAGE" .
           docker push "$IMAGE"
-          docker push "$LATEST"
-
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
 
-      - name: Build & push backend image
+      - name: Build & push backend
         id: build-backend
         working-directory: apps/backend
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          REPO: ecommerce-backend
         run: |
-          IMAGE="$ECR_REGISTRY/$REPO:${{ env.IMAGE_TAG }}"
-          LATEST="$ECR_REGISTRY/$REPO:latest"
-
-          docker build -t "$IMAGE" -t "$LATEST" .
+          IMAGE="${{ steps.login-ecr.outputs.registry }}/ecommerce-backend:${{ env.IMAGE_TAG }}"
+          docker build -t "$IMAGE" .
           docker push "$IMAGE"
-          docker push "$LATEST"
-
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
 
   deploy:
-    name: Helm Deploy — Dev
     runs-on: ubuntu-latest
     needs: build-and-push
-    environment: dev
     if: |
-      (github.event_name == 'workflow_dispatch') ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-      (github.event_name == 'push')
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: deploy-dev-helm-session
 
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v3
+      - uses: azure/setup-kubectl@v3
+      - uses: azure/setup-helm@v3
 
       - name: Update kubeconfig
         run: |
@@ -141,14 +113,17 @@ jobs:
             --name ${{ env.CLUSTER_NAME }} \
             --region ${{ env.AWS_REGION }}
 
-      - name: Get Terraform outputs
+      - name: Get Terraform outputs (ALL REQUIRED)
         working-directory: terraform/environments/dev
         run: |
           wget -q https://releases.hashicorp.com/terraform/1.7.5/terraform_1.7.5_linux_amd64.zip
           unzip -q terraform_1.7.5_linux_amd64.zip && sudo mv terraform /usr/local/bin/
           terraform init -backend=true
-          echo "BACKEND_SA_ROLE_ARN=$(terraform output -raw backend_sa_role_arn)"         >> $GITHUB_ENV
+
+          echo "BACKEND_SA_ROLE_ARN=$(terraform output -raw backend_sa_role_arn)" >> $GITHUB_ENV
           echo "ALB_CONTROLLER_ROLE_ARN=$(terraform output -raw alb_controller_role_arn)" >> $GITHUB_ENV
+          echo "VPC_ID=$(terraform output -raw vpc_id)" >> $GITHUB_ENV
+          echo "CLUSTER_NAME=$(terraform output -raw cluster_name)" >> $GITHUB_ENV
 
       - name: Add Helm repos
         run: |
@@ -159,15 +134,17 @@ jobs:
           helm repo add fluent https://fluent.github.io/helm-charts
           helm repo update
 
-      - name: Install AWS Load Balancer Controller
+      - name: Install AWS Load Balancer Controller (FIXED)
         run: |
           helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
             --namespace kube-system \
             --create-namespace \
             -f helm/infrastructure/aws-load-balancer-controller/values.yaml \
             --set clusterName=${{ env.CLUSTER_NAME }} \
+            --set region=${{ env.AWS_REGION }} \
+            --set vpcId=${{ env.VPC_ID }} \
             --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=${{ env.ALB_CONTROLLER_ROLE_ARN }} \
-            --wait --timeout 5m
+            --wait --timeout 10m
 
       - name: Install Cluster Autoscaler
         run: |
@@ -203,7 +180,7 @@ jobs:
             -f helm/infrastructure/logging/fluent-bit-values.yaml \
             --wait --timeout 5m
 
-      - name: Deploy ecommerce Helm chart
+      - name: Deploy ecommerce app
         run: |
           ECR_BASE="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
 
@@ -218,9 +195,7 @@ jobs:
             --set backend.image.tag=${{ env.IMAGE_TAG }} \
             --set serviceAccount.roleArn=${{ env.BACKEND_SA_ROLE_ARN }} \
             --set global.awsAccountId=${{ env.AWS_ACCOUNT_ID }} \
-            --atomic \
-            --timeout 10m \
-            --wait
+            --atomic --timeout 10m --wait
 
       - name: Verify deployment
         run: |
