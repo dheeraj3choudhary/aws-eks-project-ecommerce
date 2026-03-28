@@ -44,6 +44,13 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
           role-session-name: bootstrap-session
+      - name: Debug region
+        run: |
+          echo "Region length: ${#REGION}"
+          echo "Region value: [$REGION]"
+          aws configure get region
+        env:
+          REGION: ${{ secrets.AWS_REGION }}
  
       # ── Create S3 bucket for Terraform state ───────────────────────────────
       - name: Create S3 state bucket
