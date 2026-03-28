@@ -15,28 +15,28 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: Bootstrap_Script
-
+ 
 on:
   workflow_dispatch:                    # manual trigger only
     inputs:
       confirm:
         description: "Type 'bootstrap' to confirm"
         required: true
-
+ 
 permissions:
   id-token: write                       # required for OIDC
   contents: read
-
+ 
 jobs:
   bootstrap:
     name: Create S3 + DynamoDB
     runs-on: ubuntu-latest
     if: github.event.inputs.confirm == 'bootstrap'
-
+ 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
+ 
       # ── Authenticate to AWS via OIDC (no static keys) ──────────────────────
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -44,33 +44,49 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
           role-session-name: bootstrap-session
-
+      - name: Debug region
+        run: |
+          echo "Region length: ${#REGION}"
+          echo "Region value: [$REGION]"
+          aws configure get region
+        env:
+          REGION: ${{ secrets.AWS_REGION }}
+ 
       # ── Create S3 bucket for Terraform state ───────────────────────────────
       - name: Create S3 state bucket
         run: |
           BUCKET="${{ secrets.TF_STATE_BUCKET }}"
           REGION="${{ secrets.AWS_REGION }}"
-
-          # Check if bucket already exists
-          if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
-            echo "✅ Bucket $BUCKET already exists — skipping creation."
-          else
-            echo "Creating bucket: $BUCKET"
-            if [ "$REGION" = "us-west-2" ]; then
-              aws s3api create-bucket --bucket "$BUCKET" --region "$REGION"
-            else
-              aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" \
-                --create-bucket-configuration LocationConstraint="$REGION"
-            fi
-            echo "✅ Bucket created."
+ 
+          if [ -z "$REGION" ]; then
+            echo "❌ REGION is empty — check your AWS_REGION secret."
+            exit 1
           fi
-
+ 
+          if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+            echo "✅ Bucket already exists — skipping creation."
+          else
+            echo "Creating bucket: $BUCKET in $REGION"
+ 
+            if [ "$REGION" = "us-east-1" ]; then
+              # us-east-1 must NOT include LocationConstraint
+              aws s3api create-bucket \
+                --bucket "$BUCKET" \
+                --region "$REGION"
+            else
+              aws s3api create-bucket \
+                --bucket "$BUCKET" \
+                --create-bucket-configuration LocationConstraint="$REGION" \
+                --region "$REGION"
+            fi
+          fi
+ 
           # Enable versioning
           aws s3api put-bucket-versioning \
             --bucket "$BUCKET" \
             --versioning-configuration Status=Enabled
           echo "✅ Versioning enabled."
-
+ 
           # Enable server-side encryption
           aws s3api put-bucket-encryption \
             --bucket "$BUCKET" \
@@ -82,20 +98,20 @@ jobs:
               }]
             }'
           echo "✅ Encryption enabled."
-
+ 
           # Block all public access
           aws s3api put-public-access-block \
             --bucket "$BUCKET" \
             --public-access-block-configuration \
               "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
           echo "✅ Public access blocked."
-
+ 
       # ── Create DynamoDB table for state locking ────────────────────────────
       - name: Create DynamoDB lock table
         run: |
           TABLE="${{ secrets.TF_STATE_LOCK_TABLE }}"
           REGION="${{ secrets.AWS_REGION }}"
-
+ 
           if aws dynamodb describe-table --table-name "$TABLE" --region "$REGION" 2>/dev/null; then
             echo "✅ Table $TABLE already exists — skipping creation."
           else
@@ -107,7 +123,7 @@ jobs:
               --region "$REGION"
             echo "✅ DynamoDB lock table created."
           fi
-
+ 
       - name: Bootstrap complete
         run: |
           echo "════════════════════════════════════════"
