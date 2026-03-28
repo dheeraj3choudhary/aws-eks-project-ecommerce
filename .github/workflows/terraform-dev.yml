@@ -103,5 +103,6 @@ jobs:
           echo "CLUSTER_NAME=$(terraform output -raw cluster_name)" >> $GITHUB_ENV
           echo "BACKEND_SA_ROLE_ARN=$(terraform output -raw backend_sa_role_arn)" >> $GITHUB_ENV
           echo "ALB_CONTROLLER_ROLE_ARN=$(terraform output -raw alb_controller_role_arn)" >> $GITHUB_ENV
-          echo "ECR_FRONTEND=$(terraform output -json ecr_repository_urls | jq -r '.[\"ecommerce-frontend\"]')" >> $GITHUB_ENV
-          echo "ECR_BACKEND=$(terraform output -json ecr_repository_urls  | jq -r '.[\"ecommerce-backend\"]')" >> $GITHUB_ENV
+          ECR_URLS=$(terraform output -json ecr_repository_urls)
+          echo "ECR_FRONTEND=$(echo $ECR_URLS | jq -r '.["ecommerce-frontend"]')" >> $GITHUB_ENV
+          echo "ECR_BACKEND=$(echo $ECR_URLS | jq -r '.["ecommerce-backend"]')"   >> $GITHUB_ENV
