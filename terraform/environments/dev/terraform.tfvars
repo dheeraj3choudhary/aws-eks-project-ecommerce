@@ -1,5 +1,5 @@
 # terraform/environments/dev/terraform.tfvars
-# Safe to commit — no secrets here.
+# Part of commit but make sure no secrets are added here
 
 aws_region         = "us-west-2"
 environment        = "dev"
