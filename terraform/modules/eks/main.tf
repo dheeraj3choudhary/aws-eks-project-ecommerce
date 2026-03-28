@@ -1,6 +1,6 @@
 # terraform/modules/eks/main.tf
 # EKS cluster with a managed node group in private subnets.
-# OIDC provider is enabled for IRSA.
+# OIDC provider is enabled for IRSA updated
 
 data "aws_caller_identity" "current" {}
 
