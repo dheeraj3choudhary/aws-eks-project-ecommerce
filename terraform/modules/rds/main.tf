@@ -16,12 +16,26 @@ resource "aws_security_group" "rds" {
   description = "Allow PostgreSQL from EKS nodes only"
   vpc_id      = var.vpc_id
 
-  ingress {
-    description     = "PostgreSQL from EKS"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [var.eks_node_sg_id]     # only EKS nodes can reach RDS
+  dynamic "ingress" {
+    for_each = var.eks_node_sg_id != "" ? [1] : []
+    content {
+      description     = "PostgreSQL from EKS node security group"
+      from_port       = 5432
+      to_port         = 5432
+      protocol        = "tcp"
+      security_groups = [var.eks_node_sg_id]
+    }
+  }
+
+  dynamic "ingress" {
+    for_each = var.eks_node_sg_id == "" ? [1] : []
+    content {
+      description = "PostgreSQL from VPC CIDR"
+      from_port   = 5432
+      to_port     = 5432
+      protocol    = "tcp"
+      cidr_blocks = [var.vpc_cidr]
+    }
   }
 
   egress {
