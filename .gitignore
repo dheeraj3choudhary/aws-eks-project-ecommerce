@@ -55,6 +55,9 @@ credentials
 .terraform/
 .terraform.lock.hcl
 terraform.tfplan
+# allow env tfvars
+!terraform/environments/dev/terraform.tfvars
+!terraform/environments/prod/terraform.tfvars
 
 # ── Node / Frontend tooling (if you add a build step later) ──────────────────
 node_modules/
