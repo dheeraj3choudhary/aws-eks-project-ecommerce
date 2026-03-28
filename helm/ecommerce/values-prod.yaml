@@ -1,0 +1,56 @@
+# helm/ecommerce/values-prod.yaml
+# Production overrides — HA replicas, autoscaling, TLS, larger resources
+
+global:
+  environment: prod
+  awsRegion: us-west-2
+
+frontend:
+  image:
+    repository: <AWS_ACCOUNT_ID>.dkr.ecr.us-west-2.amazonaws.com/ecommerce-frontend
+    tag: latest
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 65
+
+backend:
+  image:
+    repository: <AWS_ACCOUNT_ID>.dkr.ecr.us-west-2.amazonaws.com/ecommerce-backend
+    tag: latest
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  env:
+    dbSecretName: "prod/ecommerce/db"
+    sqlEcho: "false"
+    allowedOrigins: "https://yourdomain.com,https://www.yourdomain.com"
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 65
+
+ingress:
+  enabled: true
+  scheme: internet-facing
+  targetType: ip
+  certificateArn: "arn:aws:acm:us-west-2:<AWS_ACCOUNT_ID>:certificate/<CERT_ID>"
+  subnets: ""                           # ← paste your prod public subnet IDs
+  securityGroups: ""                    # ← paste your prod ALB security group ID
+  host: "yourdomain.com"               # ← your production domain
+  tags: "Project=ecommerce-platform,Environment=prod"

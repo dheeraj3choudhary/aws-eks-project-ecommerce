@@ -1,0 +1,64 @@
+# helm/infrastructure/monitoring/grafana-values.yaml
+# Overrides for: grafana/grafana
+#
+# Install command:
+#   helm repo add grafana https://grafana.github.io/helm-charts
+#   helm upgrade --install grafana grafana/grafana \
+#     -n monitoring --create-namespace \
+#     -f helm/infrastructure/monitoring/grafana-values.yaml
+
+adminPassword: ""                       # ← inject via GitHub Actions secret
+
+replicas: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+persistence:
+  enabled: true
+  size: 5Gi
+
+# ── Datasources ───────────────────────────────────────────────────────────────
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-kube-prometheus-prometheus.monitoring:9090
+        isDefault: true
+        access: proxy
+
+# ── Pre-built dashboards ──────────────────────────────────────────────────────
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: default
+        orgId: 1
+        folder: ""
+        type: file
+        disableDeletion: false
+        options:
+          path: /var/lib/grafana/dashboards/default
+
+dashboards:
+  default:
+    kubernetes-cluster:
+      gnetId: 7249              # Kubernetes cluster monitoring dashboard
+      revision: 1
+      datasource: Prometheus
+    node-exporter:
+      gnetId: 1860              # Node exporter full dashboard
+      revision: 36
+      datasource: Prometheus
+
+# ── Service — ClusterIP (accessed via kubectl port-forward or ALB) ─────────────
+service:
+  type: ClusterIP
+  port: 80

@@ -1,0 +1,17 @@
+apiVersion: v2
+name: ecommerce
+description: Full-stack e-commerce app — FastAPI backend + Nginx frontend on AWS EKS
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
+keywords:
+  - ecommerce
+  - fastapi
+  - nginx
+  - aws
+  - eks
+
+maintainers:
+  - name: ecommerce-platform
+    email: admin@ecommerce-platform.com

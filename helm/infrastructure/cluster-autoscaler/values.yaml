@@ -1,0 +1,41 @@
+# helm/infrastructure/cluster-autoscaler/values.yaml
+# Overrides for: helm install cluster-autoscaler
+#   autoscaler/cluster-autoscaler
+#
+# Install command:
+#   helm repo add autoscaler https://kubernetes.github.io/autoscaler
+#   helm upgrade --install cluster-autoscaler autoscaler/cluster-autoscaler \
+#     -n kube-system \
+#     -f helm/infrastructure/cluster-autoscaler/values.yaml \
+#     --set autoDiscovery.clusterName=<CLUSTER_NAME> \
+#     --set awsRegion=<AWS_REGION>
+
+autoDiscovery:
+  clusterName: ""                       # ← injected by CI/CD
+
+awsRegion: us-west-2
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+extraArgs:
+  balance-similar-node-groups: true
+  skip-nodes-with-system-pods: false
+  scale-down-delay-after-add: 2m       # wait 2 min after scale-up before scaling down
+  scale-down-unneeded-time: 5m         # remove unneeded nodes after 5 min
+  max-node-provision-time: 15m
+
+rbac:
+  create: true
+  serviceAccount:
+    create: true
+    name: cluster-autoscaler
+    annotations:
+      eks.amazonaws.com/role-arn: ""    # ← set if using IRSA for autoscaler

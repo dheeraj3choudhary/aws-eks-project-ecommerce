@@ -1,0 +1,103 @@
+# helm/ecommerce/values.yaml
+# Base default values — overridden by values-dev.yaml or values-prod.yaml
+
+global:
+  environment: dev
+  awsRegion: us-west-2
+  awsAccountId: ""                      # ← injected by CI/CD pipeline
+
+# ── Namespace ──────────────────────────────────────────────────────────────────
+namespace:
+  name: ecommerce
+  create: true
+
+# ── Service Account (IRSA) ─────────────────────────────────────────────────────
+serviceAccount:
+  name: backend-sa
+  roleArn: ""                           # ← injected from Terraform output at deploy time
+
+# ── Frontend ───────────────────────────────────────────────────────────────────
+frontend:
+  name: frontend
+  image:
+    repository: ""                      # ← set in values-dev/prod.yaml
+    tag: latest
+    pullPolicy: Always
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  service:
+    type: ClusterIP
+    port: 80
+  livenessProbe:
+    path: /
+    initialDelaySeconds: 10
+    periodSeconds: 15
+  readinessProbe:
+    path: /
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+# ── Backend ────────────────────────────────────────────────────────────────────
+backend:
+  name: backend
+  image:
+    repository: ""                      # ← set in values-dev/prod.yaml
+    tag: latest
+    pullPolicy: Always
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  service:
+    type: ClusterIP
+    port: 8000
+  env:
+    dbSecretName: "dev/ecommerce/db"    # ← overridden per environment
+    sqlEcho: "false"
+    allowedOrigins: "*"
+    appVersion: "1.0.0"
+  livenessProbe:
+    path: /health
+    initialDelaySeconds: 20
+    periodSeconds: 20
+  readinessProbe:
+    path: /health
+    initialDelaySeconds: 15
+    periodSeconds: 10
+  startupProbe:
+    path: /health
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    failureThreshold: 12
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+# ── Ingress (AWS ALB) ──────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  scheme: internet-facing
+  targetType: ip
+  certificateArn: ""                    # ← set in values-dev/prod.yaml
+  subnets: ""                           # ← comma-separated public subnet IDs
+  securityGroups: ""                    # ← ALB security group ID
+  host: ""                              # ← your domain (or leave empty for ALB DNS)
+  sslRedirect: "443"
+  tags: "Project=ecommerce-platform"

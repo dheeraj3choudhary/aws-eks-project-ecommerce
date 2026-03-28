@@ -1,0 +1,50 @@
+# helm/ecommerce/values-dev.yaml
+# Dev environment overrides — lower resources, single replicas, no TLS required
+
+global:
+  environment: dev
+  awsRegion: us-west-2
+
+frontend:
+  image:
+    repository: <AWS_ACCOUNT_ID>.dkr.ecr.us-west-2.amazonaws.com/ecommerce-frontend
+    tag: latest
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  autoscaling:
+    enabled: false                      # no autoscaling in dev
+
+backend:
+  image:
+    repository: <AWS_ACCOUNT_ID>.dkr.ecr.us-west-2.amazonaws.com/ecommerce-backend
+    tag: latest
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    dbSecretName: "dev/ecommerce/db"
+    sqlEcho: "true"                     # verbose SQL logs in dev
+    allowedOrigins: "*"
+  autoscaling:
+    enabled: false
+
+ingress:
+  enabled: true
+  scheme: internet-facing
+  targetType: ip
+  certificateArn: ""                    # no TLS in dev — HTTP only
+  subnets: ""                           # ← paste your dev public subnet IDs
+  securityGroups: ""                    # ← paste your dev ALB security group ID
+  host: ""                              # use ALB DNS name directly in dev
+  tags: "Project=ecommerce-platform,Environment=dev"

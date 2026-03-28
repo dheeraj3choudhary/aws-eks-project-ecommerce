@@ -1,0 +1,106 @@
+# .github/workflows/terraform-dev.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Terraform plan on every PR touching terraform/** → dev environment
+# Terraform apply on merge to main → dev environment
+#
+# Required GitHub Secrets:
+#   AWS_ROLE_ARN   — IAM role ARN for GitHub OIDC
+#   AWS_REGION     — e.g. us-west-2
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Terraform — Dev
+
+on:
+  push:
+    branches: [dev]
+    paths: [terraform/**]
+  pull_request:
+    branches: [dev]
+    paths: [terraform/**]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: "1.7.5"
+  WORKING_DIR: terraform/environments/dev
+
+jobs:
+  terraform:
+    name: Terraform ${{ github.event_name == 'pull_request' && 'Plan' || 'Apply' }} — Dev
+    runs-on: ubuntu-latest
+    environment: dev
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: terraform-dev-session
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan \
+            -var-file="terraform.tfvars" \
+            -out=tfplan \
+            -no-color 2>&1 | tee plan_output.txt
+        continue-on-error: true
+
+      - name: Post Plan to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('${{ env.WORKING_DIR }}/plan_output.txt', 'utf8');
+            const truncated = plan.length > 60000
+              ? plan.substring(0, 60000) + '\n\n... [truncated]'
+              : plan;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Terraform Plan — Dev\n\`\`\`hcl\n${truncated}\n\`\`\``
+            });
+
+      - name: Fail if plan failed
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+      - name: Terraform Apply
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Export Terraform Outputs
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        run: |
+          echo "CLUSTER_NAME=$(terraform output -raw cluster_name)" >> $GITHUB_ENV
+          echo "BACKEND_SA_ROLE_ARN=$(terraform output -raw backend_sa_role_arn)" >> $GITHUB_ENV
+          echo "ALB_CONTROLLER_ROLE_ARN=$(terraform output -raw alb_controller_role_arn)" >> $GITHUB_ENV
+          echo "ECR_FRONTEND=$(terraform output -json ecr_repository_urls | jq -r '.[\"ecommerce-frontend\"]')" >> $GITHUB_ENV
+          echo "ECR_BACKEND=$(terraform output -json ecr_repository_urls  | jq -r '.[\"ecommerce-backend\"]')" >> $GITHUB_ENV

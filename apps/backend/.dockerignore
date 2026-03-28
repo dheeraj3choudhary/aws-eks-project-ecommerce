@@ -1,0 +1,27 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# frontend/.dockerignore
+# Only the 4 files actually needed by the Dockerfile are sent to the daemon:
+#   index.html  style.css  script.js  nginx.conf
+# Everything else is excluded to keep the build context tiny and fast.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Exclude everything by default, then whitelist ─────────────────────────────
+**
+
+# ── Whitelist: files the Dockerfile COPYs ─────────────────────────────────────
+!index.html
+!style.css
+!script.js
+!nginx.conf
+
+# ── Always exclude regardless of whitelist ────────────────────────────────────
+.env
+.env.*
+*.local
+*.log
+.DS_Store
+Thumbs.db
+.git
+.gitignore
+.dockerignore
+README.md
