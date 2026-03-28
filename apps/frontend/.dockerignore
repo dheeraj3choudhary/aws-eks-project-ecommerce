@@ -1,79 +1,27 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# backend/.dockerignore
-# Only Python source files and requirements.txt are sent to the build daemon.
-# Credentials, caches, and test files are explicitly excluded.
+# frontend/.dockerignore
+# Only the 4 files actually needed by the Dockerfile are sent to the daemon:
+#   index.html  style.css  script.js  nginx.conf
+# Everything else is excluded to keep the build context tiny and fast.
 # ══════════════════════════════════════════════════════════════════════════════
 
 # ── Exclude everything by default, then whitelist ─────────────────────────────
 **
 
 # ── Whitelist: files the Dockerfile COPYs ─────────────────────────────────────
-!main.py
-!models.py
-!database.py
-!schemas.py
-!requirements.txt
+!index.html
+!style.css
+!script.js
+!nginx.conf
 
 # ── Always exclude regardless of whitelist ────────────────────────────────────
-
-# Secrets — must never enter an image layer
 .env
 .env.*
 *.local
-*.pem
-*.key
-.aws/
-credentials
-
-# Python caches & compiled files
-__pycache__/
-*.py[cod]
-*.pyo
-*.so
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-
-# Virtual environments
-.venv/
-venv/
-env/
-
-# Test files (not needed at runtime)
-tests/
-test_*.py
-*_test.py
-conftest.py
-pytest.ini
-setup.cfg
-pyproject.toml
-
-# Coverage & CI artifacts
-.coverage
-htmlcov/
-coverage.xml
-.tox/
-
-# Database files
-*.sqlite
-*.sqlite3
-*.db
-
-# Logs
 *.log
-logs/
-
-# Editor & OS
-.vscode/
-.idea/
 .DS_Store
 Thumbs.db
-
-# Git
 .git
 .gitignore
 .dockerignore
-
-# Docs
 README.md
-docs/
