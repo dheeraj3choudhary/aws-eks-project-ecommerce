@@ -8,7 +8,7 @@
 #   AWS_REGION     — e.g. us-west-2
 # ─────────────────────────────────────────────────────────────────────────────
 
-name: Terraform — Dev
+name: Terraform_Infra_Dev
 
 on:
   push:
