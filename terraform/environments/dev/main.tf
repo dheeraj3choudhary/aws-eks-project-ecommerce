@@ -24,15 +24,15 @@ module "vpc" {
 
 # ── EKS ───────────────────────────────────────────────────────────────────────
 module "eks" {
-  source              = "../../modules/eks"
-  cluster_name        = local.cluster_name
-  kubernetes_version  = var.kubernetes_version
-  private_subnet_ids  = module.vpc.private_subnet_ids
-  node_instance_type  = var.node_instance_type
-  capacity_type       = "SPOT"           # cost-save in dev
-  node_desired        = 2
-  node_min            = 1
-  node_max            = 3
+  source             = "../../modules/eks"
+  cluster_name       = local.cluster_name
+  kubernetes_version = var.kubernetes_version
+  private_subnet_ids = module.vpc.private_subnet_ids
+  node_instance_type = var.node_instance_type
+  capacity_type      = "SPOT" # cost-save in dev
+  node_desired       = 2
+  node_min           = 1
+  node_max           = 3
 }
 
 # ── ECR ───────────────────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ module "rds" {
   db_username         = "ecommerceadmin"
   db_password         = random_password.db.result
   instance_class      = var.db_instance_class
-  multi_az            = false            # single-AZ in dev to save cost
+  multi_az            = false # single-AZ in dev to save cost
   deletion_protection = false
   skip_final_snapshot = true
 }

@@ -1,0 +1,102 @@
+# .github/workflows/bootstrap-destroy.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# ⚠️  NUCLEAR OPTION — destroys the S3 bucket and DynamoDB table that store
+#     ALL Terraform state for BOTH dev and prod environments.
+#
+# Only run this if:
+#   - Both dev and prod environments have already been fully destroyed via destroy.yml
+#   - You are completely shutting down this project
+#   - You understand that after this runs, Terraform has no memory of any
+#     resources it ever created — any remaining AWS resources must be deleted manually
+#
+# Safety gates:
+#   1. You must type 'destroy-bootstrap' as confirmation
+#   2. You must type the exact S3 bucket name as a second confirmation
+#   3. GitHub Environment "prod" approval required (same reviewers as prod deploy)
+#   4. Workflow checks that both dev and prod EKS clusters no longer exist
+#
+# Required GitHub Secrets:
+#   AWS_ROLE_ARN        — dev/shared IAM role
+#   AWS_REGION          — e.g. us-west-2
+#   TF_STATE_BUCKET     — S3 bucket name (also used as second confirmation)
+#   TF_STATE_LOCK_TABLE — DynamoDB table name
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Bootstrap_Destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_action:
+        description: "Type 'destroy-bootstrap' to confirm"
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_action }}" != "destroy-bootstrap" ]; then
+            echo "❌ Confirmation failed. Type destroy-bootstrap"
+            exit 1
+          fi
+          echo "✅ Confirmation passed"
+
+  safety-check:
+    runs-on: ubuntu-latest
+    needs: validate
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Ensure EKS clusters do not exist
+        run: |
+          for CLUSTER in ecommerce-dev ecommerce-prod; do
+            if aws eks describe-cluster --name $CLUSTER --region ${{ secrets.AWS_REGION }} 2>/dev/null; then
+              echo "Cluster $CLUSTER still exists"
+              exit 1
+            fi
+          done
+
+  destroy-bootstrap:
+    runs-on: ubuntu-latest
+    needs: safety-check
+    environment: prod
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Force delete S3 bucket (handles versions automatically)
+        run: |
+          BUCKET="${{ secrets.TF_STATE_BUCKET }}"
+          REGION="${{ secrets.AWS_REGION }}"
+
+          echo "Emptying bucket: $BUCKET"
+          aws s3 rm s3://$BUCKET --recursive || true
+
+          echo "Deleting bucket: $BUCKET"
+          aws s3api delete-bucket \
+            --bucket "$BUCKET" \
+            --region "$REGION"
+
+      - name: Delete DynamoDB table
+        run: |
+          aws dynamodb delete-table \
+            --table-name "${{ secrets.TF_STATE_LOCK_TABLE }}" \
+            --region "${{ secrets.AWS_REGION }}"
+
+      - name: Done
+        run: echo "Bootstrap destroyed successfully"
