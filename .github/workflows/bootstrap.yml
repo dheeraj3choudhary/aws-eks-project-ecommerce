@@ -44,41 +44,22 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
           role-session-name: bootstrap-session
-      - name: Debug region
-        run: |
-          echo "Region length: ${#REGION}"
-          echo "Region value: [$REGION]"
-          aws configure get region
-        env:
-          REGION: ${{ secrets.AWS_REGION }}
  
       # ── Create S3 bucket for Terraform state ───────────────────────────────
       - name: Create S3 state bucket
         run: |
           BUCKET="${{ secrets.TF_STATE_BUCKET }}"
           REGION="${{ secrets.AWS_REGION }}"
- 
-          if [ -z "$REGION" ]; then
-            echo "❌ REGION is empty — check your AWS_REGION secret."
-            exit 1
-          fi
- 
+
           if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
-            echo "✅ Bucket already exists — skipping creation."
+            echo "Bucket exists"
           else
             echo "Creating bucket: $BUCKET in $REGION"
- 
-            if [ "$REGION" = "us-east-1" ]; then
-              # us-east-1 must NOT include LocationConstraint
-              aws s3api create-bucket \
-                --bucket "$BUCKET" \
-                --region "$REGION"
-            else
-              aws s3api create-bucket \
-                --bucket "$BUCKET" \
-                --create-bucket-configuration LocationConstraint="$REGION" \
-                --region "$REGION"
-            fi
+
+            aws s3api create-bucket \
+              --bucket "$BUCKET" \
+              --create-bucket-configuration LocationConstraint=$REGION \
+              --region $REGION
           fi
  
           # Enable versioning
