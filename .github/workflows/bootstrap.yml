@@ -53,16 +53,13 @@ jobs:
 
           # Check if bucket already exists
           if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
-            echo "✅ Bucket $BUCKET already exists — skipping creation."
+            echo "Bucket exists"
           else
-            echo "Creating bucket: $BUCKET"
-            if [ "$REGION" = "us-west-2" ]; then
-              aws s3api create-bucket --bucket "$BUCKET" --region "$REGION"
-            else
-              aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" \
-                --create-bucket-configuration LocationConstraint="$REGION"
-            fi
-            echo "✅ Bucket created."
+            echo "Creating bucket: $BUCKET in $REGION"
+            aws s3api create-bucket \
+              --bucket "$BUCKET" \
+              --region "$REGION" \
+              --create-bucket-configuration LocationConstraint="$REGION"
           fi
 
           # Enable versioning
