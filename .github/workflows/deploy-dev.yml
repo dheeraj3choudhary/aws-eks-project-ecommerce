@@ -52,8 +52,10 @@ jobs:
     name: Build & Push Images
     runs-on: ubuntu-latest
     if: |
+      (github.event_name == 'workflow_dispatch') ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
       (github.event_name == 'push')
+      
 
     outputs:
       frontend_image: ${{ steps.build-frontend.outputs.image }}
@@ -112,6 +114,7 @@ jobs:
     needs: build-and-push
     environment: dev
     if: |
+      (github.event_name == 'workflow_dispatch') ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
       (github.event_name == 'push')
 
