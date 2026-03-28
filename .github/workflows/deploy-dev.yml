@@ -31,7 +31,7 @@ on:
       - apps/**
       - helm/**
   workflow_run:
-    workflows: ["Terraform — Dev"]
+    workflows: ["Terraform_Infra_Dev"]
     types:
       - completed
   workflow_dispatch:

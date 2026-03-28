@@ -5,7 +5,7 @@
 #
 # Required GitHub Secrets:
 #   AWS_ROLE_ARN   — IAM role ARN for GitHub OIDC
-#   AWS_REGION     — e.g. us-west-2
+#   AWS_REGION     — us-west-2
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: Terraform_Infra_Dev
