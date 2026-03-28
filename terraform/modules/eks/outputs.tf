@@ -8,3 +8,4 @@ output "oidc_provider_url"       { value = aws_iam_openid_connect_provider.eks.u
 output "node_security_group_id" {
   value = aws_eks_cluster.main.vpc_config[0].cluster_security_group_id
 }
+output "ebs_csi_role_arn"        { value = aws_iam_role.ebs_csi.arn }
