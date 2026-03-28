@@ -1,5 +1,5 @@
 # terraform/environments/dev/main.tf
-# Wires all modules together for the dev environment.
+# Wires all modules together for the dev environment together
 
 locals {
   env          = "dev"
