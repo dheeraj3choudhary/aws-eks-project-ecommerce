@@ -63,7 +63,8 @@ resource "aws_db_parameter_group" "main" {
 resource "aws_db_instance" "main" {
   identifier        = var.identifier
   engine            = "postgres"
-  engine_version    = "15.6"
+  engine_version    = "15"
+  auto_minor_version_upgrade = true
   instance_class    = var.instance_class
   allocated_storage = var.allocated_storage
   storage_encrypted = true
