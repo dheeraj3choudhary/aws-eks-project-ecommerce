@@ -51,15 +51,15 @@ jobs:
           BUCKET="${{ secrets.TF_STATE_BUCKET }}"
           REGION="${{ secrets.AWS_REGION }}"
 
-          # Check if bucket already exists
           if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
             echo "Bucket exists"
           else
             echo "Creating bucket: $BUCKET in $REGION"
+
             aws s3api create-bucket \
               --bucket "$BUCKET" \
-              --region "$REGION" \
-              --create-bucket-configuration LocationConstraint="$REGION"
+              --create-bucket-configuration LocationConstraint=$REGION \
+              --region $REGION
           fi
 
           # Enable versioning
