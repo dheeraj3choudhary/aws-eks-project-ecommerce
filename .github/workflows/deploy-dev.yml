@@ -133,6 +133,11 @@ jobs:
           helm repo add grafana https://grafana.github.io/helm-charts
           helm repo add fluent https://fluent.github.io/helm-charts
           helm repo update
+          
+      - name: Cleanup stuck Helm release
+        run: |
+          helm uninstall aws-load-balancer-controller -n kube-system || true
+          kubectl delete secret -n kube-system -l owner=helm,name=aws-load-balancer-controller || true
 
       - name: Install AWS Load Balancer Controller (FIXED)
         run: |
