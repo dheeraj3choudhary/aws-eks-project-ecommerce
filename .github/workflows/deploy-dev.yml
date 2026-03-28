@@ -164,14 +164,6 @@ jobs:
             --set awsRegion=${{ env.AWS_REGION }} \
             --atomic --wait --timeout 5m
 
-      - name: Install Prometheus
-        run: |
-          helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
-            --namespace monitoring \
-            --create-namespace \
-            -f helm/infrastructure/monitoring/prometheus-values.yaml \
-            --atomic --wait --timeout 10m
-
       - name: Clean stuck Helm releases
         run: |
           for RELEASE in prometheus grafana fluent-bit; do
@@ -184,6 +176,7 @@ jobs:
             fi
           done
         continue-on-error: true
+
       - name: Install Prometheus + Grafana
         run: |
           helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
@@ -200,7 +193,7 @@ jobs:
             --namespace logging \
             --create-namespace \
             -f helm/infrastructure/logging/fluent-bit-values.yaml \
-            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=$FLUENT_BIT_ROLE \
+            --set-string "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$FLUENT_BIT_ROLE" \
             --wait --timeout 5m
 
       - name: Deploy ecommerce app
