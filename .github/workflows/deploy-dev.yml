@@ -172,19 +172,18 @@ jobs:
             -f helm/infrastructure/monitoring/prometheus-values.yaml \
             --atomic --wait --timeout 10m
 
-      - name: Install Grafana (retry safe)
+      - name: Clean stuck Helm releases
         run: |
-          helm upgrade --install grafana grafana/grafana \
-            --namespace monitoring \
-            --create-namespace \
-            -f helm/infrastructure/monitoring/grafana-values.yaml \
-            --set adminPassword=${{ secrets.GRAFANA_ADMIN_PASSWORD }} \
-            --atomic --wait --timeout 10m || \
-          (sleep 30 && helm upgrade --install grafana grafana/grafana \
-            --namespace monitoring \
-            -f helm/infrastructure/monitoring/grafana-values.yaml \
-            --set adminPassword=${{ secrets.GRAFANA_ADMIN_PASSWORD }} \
-            --atomic --wait --timeout 10m)
+          for RELEASE in prometheus grafana fluent-bit; do
+            NS=monitoring
+            [ "$RELEASE" = "fluent-bit" ] && NS=logging
+            STATUS=$(helm status $RELEASE -n $NS 2>/dev/null | grep STATUS | awk '{print $2}')
+            if [ "$STATUS" = "pending-install" ] || [ "$STATUS" = "pending-upgrade" ]; then
+              echo "Cleaning stuck release: $RELEASE"
+              helm uninstall $RELEASE -n $NS 2>/dev/null || true
+            fi
+          done
+        continue-on-error: true
 
       - name: Install Fluent Bit
         run: |
