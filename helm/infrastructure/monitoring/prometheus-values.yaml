@@ -48,3 +48,4 @@ kubeStateMetrics:
 # ── Grafana — disabled here, configured separately ────────────────────────────
 grafana:
   enabled: false                        # deployed via grafana-values.yaml
+  adminPassword: ""

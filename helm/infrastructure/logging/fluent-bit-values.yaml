@@ -63,6 +63,6 @@ config:
         Match               kube.*
         region              us-west-2
         log_group_name      /eks/ecommerce-platform
-        log_stream_prefix   fluent-bit-
+        log_stream_prefix   ${HOSTNAME}-
         auto_create_group   On
         retry_limit         2
