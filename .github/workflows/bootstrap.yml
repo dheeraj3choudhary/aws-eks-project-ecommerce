@@ -14,7 +14,7 @@
 #   TF_STATE_LOCK_TABLE — desired DynamoDB table name (e.g. ecommerce-eks-tflock)
 # ─────────────────────────────────────────────────────────────────────────────
 
-name: Bootstrap — Remote State Infrastructure
+name: Bootstrap_Script
 
 on:
   workflow_dispatch:                    # manual trigger only

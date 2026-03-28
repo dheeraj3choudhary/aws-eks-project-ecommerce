@@ -22,7 +22,7 @@
 #   GRAFANA_ADMIN_PASSWORD — Grafana admin password
 # ─────────────────────────────────────────────────────────────────────────────
 
-name: Deploy — Dev
+name: Deploy_APP_Dev
 
 on:
   push:
