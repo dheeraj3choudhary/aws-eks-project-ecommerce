@@ -113,6 +113,10 @@ jobs:
             --name ${{ env.CLUSTER_NAME }} \
             --region ${{ env.AWS_REGION }}
 
+      - name: Wait for nodes
+        run: |
+          kubectl wait --for=condition=Ready nodes --all --timeout=5m
+
       - name: Get Terraform outputs (ALL REQUIRED)
         working-directory: terraform/environments/dev
         run: |
@@ -139,7 +143,7 @@ jobs:
           helm uninstall aws-load-balancer-controller -n kube-system || true
           kubectl delete secret -n kube-system -l owner=helm,name=aws-load-balancer-controller || true
 
-      - name: Install AWS Load Balancer Controller (FIXED)
+      - name: Install AWS Load Balancer Controller
         run: |
           helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
             --namespace kube-system \
@@ -149,7 +153,7 @@ jobs:
             --set region=${{ env.AWS_REGION }} \
             --set vpcId=${{ env.VPC_ID }} \
             --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=${{ env.ALB_CONTROLLER_ROLE_ARN }} \
-            --wait --timeout 10m
+            --atomic --wait --timeout 10m
 
       - name: Install Cluster Autoscaler
         run: |
@@ -158,7 +162,7 @@ jobs:
             -f helm/infrastructure/cluster-autoscaler/values.yaml \
             --set autoDiscovery.clusterName=${{ env.CLUSTER_NAME }} \
             --set awsRegion=${{ env.AWS_REGION }} \
-            --wait --timeout 5m
+            --atomic --wait --timeout 5m
 
       - name: Install Prometheus
         run: |
@@ -166,16 +170,21 @@ jobs:
             --namespace monitoring \
             --create-namespace \
             -f helm/infrastructure/monitoring/prometheus-values.yaml \
-            --wait --timeout 10m
+            --atomic --wait --timeout 10m
 
-      - name: Install Grafana
+      - name: Install Grafana (retry safe)
         run: |
           helm upgrade --install grafana grafana/grafana \
             --namespace monitoring \
             --create-namespace \
             -f helm/infrastructure/monitoring/grafana-values.yaml \
             --set adminPassword=${{ secrets.GRAFANA_ADMIN_PASSWORD }} \
-            --wait --timeout 5m
+            --atomic --wait --timeout 10m || \
+          (sleep 30 && helm upgrade --install grafana grafana/grafana \
+            --namespace monitoring \
+            -f helm/infrastructure/monitoring/grafana-values.yaml \
+            --set adminPassword=${{ secrets.GRAFANA_ADMIN_PASSWORD }} \
+            --atomic --wait --timeout 10m)
 
       - name: Install Fluent Bit
         run: |
@@ -183,7 +192,7 @@ jobs:
             --namespace logging \
             --create-namespace \
             -f helm/infrastructure/logging/fluent-bit-values.yaml \
-            --wait --timeout 5m
+            --atomic --wait --timeout 5m
 
       - name: Deploy ecommerce app
         run: |
@@ -200,7 +209,7 @@ jobs:
             --set backend.image.tag=${{ env.IMAGE_TAG }} \
             --set serviceAccount.roleArn=${{ env.BACKEND_SA_ROLE_ARN }} \
             --set global.awsAccountId=${{ env.AWS_ACCOUNT_ID }} \
-            --atomic --timeout 10m --wait
+            --atomic --wait --timeout 10m
 
       - name: Verify deployment
         run: |
