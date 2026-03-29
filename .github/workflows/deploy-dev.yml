@@ -215,8 +215,7 @@ jobs:
             --set backend.image.tag=${{ env.IMAGE_TAG }} \
             --set serviceAccount.roleArn=${{ env.BACKEND_SA_ROLE_ARN }} \
             --set global.awsAccountId=${{ env.AWS_ACCOUNT_ID }} \
-            --timeout 10m \
-            --debug
+            --atomic --wait --timeout 10m
 
       - name: Verify deployment
         run: |
