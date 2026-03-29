@@ -199,6 +199,9 @@ jobs:
       - name: Deploy ecommerce app
         run: |
           kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+          kubectl label namespace ${{ env.NAMESPACE }} app.kubernetes.io/managed-by=Helm --overwrite
+          kubectl annotate namespace ${{ env.NAMESPACE }} meta.helm.sh/release-name=ecommerce --overwrite
+          kubectl annotate namespace ${{ env.NAMESPACE }} meta.helm.sh/release-namespace=${{ env.NAMESPACE }} --overwrite
 
           ECR_BASE="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
 
