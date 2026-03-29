@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class ProductBase(BaseModel):
     name:        str     = Field(..., min_length=1, max_length=200,  description="Product name")
     description: Optional[str] = Field(None, max_length=2000,       description="Long-form description")
-    price:       Decimal = Field(..., gt=0, decimal_places=2,        description="Unit price (must be > 0)")
+    price:       Decimal = Field(..., gt=0,        description="Unit price (must be > 0)")
     stock:       int     = Field(0,  ge=0,                           description="Units in stock")
     category:    Optional[str] = Field(None, max_length=100,         description="Category label")
     emoji:       Optional[str] = Field(None, max_length=8,           description="Display emoji")
@@ -39,7 +39,7 @@ class ProductUpdate(BaseModel):
     """Payload for PATCH /products/{id} — all fields optional."""
     name:        Optional[str]     = Field(None, min_length=1, max_length=200)
     description: Optional[str]     = Field(None, max_length=2000)
-    price:       Optional[Decimal] = Field(None, gt=0, decimal_places=2)
+    price:       Optional[Decimal] = Field(None, gt=0,)
     stock:       Optional[int]     = Field(None, ge=0)
     category:    Optional[str]     = Field(None, max_length=100)
     emoji:       Optional[str]     = Field(None, max_length=8)

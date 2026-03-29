@@ -19,6 +19,15 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Nginx listens on port 80
 EXPOSE 80
 
+RUN mkdir -p /var/cache/nginx/client_temp \
+             /var/cache/nginx/proxy_temp \
+             /var/cache/nginx/fastcgi_temp \
+             /var/cache/nginx/uwsgi_temp \
+             /var/cache/nginx/scgi_temp \
+    && chown -R nginx:nginx /var/cache/nginx \
+    && touch /var/run/nginx.pid \
+    && chown -R nginx:nginx /var/run/nginx.pid
+
 # Health-check so EKS/ALB can verify liveness
 HEALTHCHECK --interval=15s --timeout=5s --start-period=5s --retries=3 \
   CMD wget -qO- http://localhost/ || exit 1
