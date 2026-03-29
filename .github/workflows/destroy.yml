@@ -1,0 +1,132 @@
+# .github/workflows/destroy.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Destroys a full environment (dev or prod).
+#
+# Why we uninstall the ecommerce Helm chart first:
+#   The ALB Ingress creates a real AWS Load Balancer outside Terraform state.
+#   If we run terraform destroy without removing it first, the VPC destroy
+#   will hang because the ALB is still attached to the subnets.
+#   Everything else (EKS, pods, Helm releases) is deleted by terraform destroy.
+#
+# Required GitHub Secrets:
+#   AWS_ROLE_ARN        — dev IAM role
+#   AWS_ROLE_ARN_PROD   — prod IAM role
+#   AWS_REGION          — e.g. us-west-2
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Destroy_Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to destroy"
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+      confirm:
+        description: "Type 'destroy-<env>' to confirm (e.g. destroy-dev)"
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation string
+        run: |
+          EXPECTED="destroy-${{ github.event.inputs.environment }}"
+          ACTUAL="${{ github.event.inputs.confirm }}"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "❌ Confirmation mismatch."
+            echo "   Expected : $EXPECTED"
+            echo "   Got      : $ACTUAL"
+            exit 1
+          fi
+          echo "✅ Confirmation validated."
+
+  destroy:
+    name: Destroy — ${{ github.event.inputs.environment }}
+    runs-on: ubuntu-latest
+    needs: validate
+    environment: ${{ github.event.inputs.environment }}
+
+    env:
+      ENV:        ${{ github.event.inputs.environment }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      TF_VERSION: "1.7.5"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ github.event.inputs.environment == 'prod' && secrets.AWS_ROLE_ARN_PROD || secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: destroy-${{ env.ENV }}-session
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: latest
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: latest
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name ecommerce-${{ env.ENV }} \
+            --region ${{ env.AWS_REGION }}
+        continue-on-error: true
+
+      # ── Uninstall ecommerce chart to delete the ALB before VPC destroy ───────
+      - name: Uninstall ecommerce Helm chart
+        run: |
+          if helm status ecommerce -n ecommerce 2>/dev/null; then
+            helm uninstall ecommerce -n ecommerce --wait --timeout 5m
+            echo "✅ ecommerce chart uninstalled — ALB deletion triggered."
+          else
+            echo "ℹ️ ecommerce chart not found — skipping."
+          fi
+        continue-on-error: true
+
+      - name: Wait for ALB deletion
+        run: |
+          echo "Waiting 60s for AWS to fully delete the ALB and target groups..."
+          sleep 60
+
+      # ── Terraform destroy ────────────────────────────────────────────────────
+      - name: Terraform Init
+        working-directory: terraform/environments/${{ env.ENV }}
+        run: terraform init
+
+      - name: Terraform Destroy
+        working-directory: terraform/environments/${{ env.ENV }}
+        run: |
+          terraform destroy \
+            -var-file="terraform.tfvars" \
+            -auto-approve
+          echo "✅ Terraform destroy complete for ${{ env.ENV }}."
+
+      - name: Destroy summary
+        run: |
+          echo "════════════════════════════════════════"
+          echo "✅ Environment '${{ env.ENV }}' destroyed."
+          echo "   Terraform state updated in S3."
+          echo "════════════════════════════════════════"

@@ -23,7 +23,7 @@ serviceAccount:
   create: true
   name: fluent-bit
   annotations:
-    eks.amazonaws.com/role-arn: ""      # ← set if using IRSA for CloudWatch
+    eks.amazonaws.com/role-arn: ""
 
 # ── Config ────────────────────────────────────────────────────────────────────
 config:
@@ -33,6 +33,10 @@ config:
         Log_Level     info
         Daemon        off
         Parsers_File  parsers.conf
+        HTTP_Server   On
+        HTTP_Listen   0.0.0.0
+        HTTP_Port     2020
+        Health_Check  On
 
   inputs: |
     [INPUT]
@@ -63,6 +67,6 @@ config:
         Match               kube.*
         region              us-west-2
         log_group_name      /eks/ecommerce-platform
-        log_stream_prefix   fluent-bit-
+        log_stream_prefix   ${HOSTNAME}-
         auto_create_group   On
         retry_limit         2

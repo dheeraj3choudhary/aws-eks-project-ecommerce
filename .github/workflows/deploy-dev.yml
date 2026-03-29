@@ -31,7 +31,7 @@ on:
       - apps/**
       - helm/**
   workflow_run:
-    workflows: ["Terraform — Dev"]
+    workflows: ["Terraform_Infra_Dev"]
     types:
       - completed
   workflow_dispatch:
@@ -49,88 +49,63 @@ env:
 
 jobs:
   build-and-push:
-    name: Build & Push Images
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-      (github.event_name == 'push')
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
 
     outputs:
       frontend_image: ${{ steps.build-frontend.outputs.image }}
       backend_image:  ${{ steps.build-backend.outputs.image }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: deploy-dev-build-session
 
-      - name: Login to Amazon ECR
-        id: login-ecr
+      - id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build & push frontend image
+      - name: Build & push frontend
         id: build-frontend
         working-directory: apps/frontend
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          REPO: ecommerce-frontend
         run: |
-          IMAGE="$ECR_REGISTRY/$REPO:${{ env.IMAGE_TAG }}"
-          LATEST="$ECR_REGISTRY/$REPO:latest"
-
-          docker build -t "$IMAGE" -t "$LATEST" .
+          IMAGE="${{ steps.login-ecr.outputs.registry }}/ecommerce-frontend:${{ env.IMAGE_TAG }}"
+          docker build -t "$IMAGE" .
           docker push "$IMAGE"
-          docker push "$LATEST"
-
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
 
-      - name: Build & push backend image
+      - name: Build & push backend
         id: build-backend
         working-directory: apps/backend
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          REPO: ecommerce-backend
         run: |
-          IMAGE="$ECR_REGISTRY/$REPO:${{ env.IMAGE_TAG }}"
-          LATEST="$ECR_REGISTRY/$REPO:latest"
-
-          docker build -t "$IMAGE" -t "$LATEST" .
+          IMAGE="${{ steps.login-ecr.outputs.registry }}/ecommerce-backend:${{ env.IMAGE_TAG }}"
+          docker build -t "$IMAGE" .
           docker push "$IMAGE"
-          docker push "$LATEST"
-
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
 
   deploy:
-    name: Helm Deploy — Dev
     runs-on: ubuntu-latest
     needs: build-and-push
-    environment: dev
     if: |
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-      (github.event_name == 'push')
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: deploy-dev-helm-session
 
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v3
+      - uses: azure/setup-kubectl@v3
+      - uses: azure/setup-helm@v3
 
       - name: Update kubeconfig
         run: |
@@ -138,14 +113,21 @@ jobs:
             --name ${{ env.CLUSTER_NAME }} \
             --region ${{ env.AWS_REGION }}
 
-      - name: Get Terraform outputs
+      - name: Wait for nodes
+        run: |
+          kubectl wait --for=condition=Ready nodes --all --timeout=5m
+
+      - name: Get Terraform outputs (ALL REQUIRED)
         working-directory: terraform/environments/dev
         run: |
           wget -q https://releases.hashicorp.com/terraform/1.7.5/terraform_1.7.5_linux_amd64.zip
           unzip -q terraform_1.7.5_linux_amd64.zip && sudo mv terraform /usr/local/bin/
           terraform init -backend=true
-          echo "BACKEND_SA_ROLE_ARN=$(terraform output -raw backend_sa_role_arn)"         >> $GITHUB_ENV
+
+          echo "BACKEND_SA_ROLE_ARN=$(terraform output -raw backend_sa_role_arn)" >> $GITHUB_ENV
           echo "ALB_CONTROLLER_ROLE_ARN=$(terraform output -raw alb_controller_role_arn)" >> $GITHUB_ENV
+          echo "VPC_ID=$(terraform output -raw vpc_id)" >> $GITHUB_ENV
+          echo "CLUSTER_NAME=$(terraform output -raw cluster_name)" >> $GITHUB_ENV
 
       - name: Add Helm repos
         run: |
@@ -155,6 +137,11 @@ jobs:
           helm repo add grafana https://grafana.github.io/helm-charts
           helm repo add fluent https://fluent.github.io/helm-charts
           helm repo update
+          
+      - name: Cleanup stuck Helm release
+        run: |
+          helm uninstall aws-load-balancer-controller -n kube-system || true
+          kubectl delete secret -n kube-system -l owner=helm,name=aws-load-balancer-controller || true
 
       - name: Install AWS Load Balancer Controller
         run: |
@@ -163,8 +150,10 @@ jobs:
             --create-namespace \
             -f helm/infrastructure/aws-load-balancer-controller/values.yaml \
             --set clusterName=${{ env.CLUSTER_NAME }} \
+            --set region=${{ env.AWS_REGION }} \
+            --set vpcId=${{ env.VPC_ID }} \
             --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=${{ env.ALB_CONTROLLER_ROLE_ARN }} \
-            --wait --timeout 5m
+            --atomic --wait --timeout 10m
 
       - name: Install Cluster Autoscaler
         run: |
@@ -173,40 +162,51 @@ jobs:
             -f helm/infrastructure/cluster-autoscaler/values.yaml \
             --set autoDiscovery.clusterName=${{ env.CLUSTER_NAME }} \
             --set awsRegion=${{ env.AWS_REGION }} \
-            --wait --timeout 5m
+            --atomic --wait --timeout 5m
 
-      - name: Install Prometheus
+      - name: Clean stuck Helm releases
+        run: |
+          for RELEASE in prometheus grafana fluent-bit; do
+            NS=monitoring
+            [ "$RELEASE" = "fluent-bit" ] && NS=logging
+            STATUS=$(helm status $RELEASE -n $NS 2>/dev/null | grep STATUS | awk '{print $2}')
+            if [ "$STATUS" = "pending-install" ] || [ "$STATUS" = "pending-upgrade" ]; then
+              echo "Cleaning stuck release: $RELEASE"
+              helm uninstall $RELEASE -n $NS 2>/dev/null || true
+            fi
+          done
+        continue-on-error: true
+
+      - name: Install Prometheus + Grafana
         run: |
           helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
             --namespace monitoring \
             --create-namespace \
             -f helm/infrastructure/monitoring/prometheus-values.yaml \
+            --set grafana.adminPassword=${{ secrets.GRAFANA_ADMIN_PASSWORD }} \
             --wait --timeout 10m
-
-      - name: Install Grafana
-        run: |
-          helm upgrade --install grafana grafana/grafana \
-            --namespace monitoring \
-            --create-namespace \
-            -f helm/infrastructure/monitoring/grafana-values.yaml \
-            --set adminPassword=${{ secrets.GRAFANA_ADMIN_PASSWORD }} \
-            --wait --timeout 5m
 
       - name: Install Fluent Bit
         run: |
+          FLUENT_BIT_ROLE=$(cd terraform/environments/dev && terraform output -raw fluent_bit_role_arn)
           helm upgrade --install fluent-bit fluent/fluent-bit \
             --namespace logging \
             --create-namespace \
             -f helm/infrastructure/logging/fluent-bit-values.yaml \
+            --set-string "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$FLUENT_BIT_ROLE" \
             --wait --timeout 5m
 
-      - name: Deploy ecommerce Helm chart
+      - name: Deploy ecommerce app
         run: |
+          kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+          kubectl label namespace ${{ env.NAMESPACE }} app.kubernetes.io/managed-by=Helm --overwrite
+          kubectl annotate namespace ${{ env.NAMESPACE }} meta.helm.sh/release-name=ecommerce --overwrite
+          kubectl annotate namespace ${{ env.NAMESPACE }} meta.helm.sh/release-namespace=${{ env.NAMESPACE }} --overwrite
+
           ECR_BASE="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
 
           helm upgrade --install ecommerce ./helm/ecommerce \
             --namespace ${{ env.NAMESPACE }} \
-            --create-namespace \
             -f helm/ecommerce/values.yaml \
             -f helm/ecommerce/values-dev.yaml \
             --set frontend.image.repository="$ECR_BASE/ecommerce-frontend" \
@@ -215,9 +215,7 @@ jobs:
             --set backend.image.tag=${{ env.IMAGE_TAG }} \
             --set serviceAccount.roleArn=${{ env.BACKEND_SA_ROLE_ARN }} \
             --set global.awsAccountId=${{ env.AWS_ACCOUNT_ID }} \
-            --atomic \
-            --timeout 10m \
-            --wait
+            --atomic --wait --timeout 10m
 
       - name: Verify deployment
         run: |
